@@ -1,0 +1,43 @@
+# Secrets and local environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*credentials*
+*service-account*
+
+# Python/runtime
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Node/build output
+node_modules/
+dist/
+build/
+.vite/
+
+# Local runtime data and generated artifacts
+*.log
+*.sqlite
+*.db
+uploads/
+reports/
+*.pdf
+*.zip
+.manus-logs/
+Dockerfile.local.env
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+# Large local demo video - keep outside GitHub
+/frontend/client/public/how-it-works.mp4
+
+# Large local demo video - keep outside GitHub
+/frontend/client/public/drishyam-how-it-works.mp4

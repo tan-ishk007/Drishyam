@@ -14,10 +14,13 @@ router = APIRouter(prefix="/cases", tags=["cases"])
 
 @router.post("", response_model=CaseResponse, status_code=status.HTTP_201_CREATED)
 def create_case(payload: CaseCreateRequest, current_user: CurrentUser, db: DbSession) -> CaseResponse:
+    if payload.description is None or not payload.description.strip():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Case description is required.")
     case = Case(
         case_number=create_case_number(),
         title=payload.title.strip(),
         crime_type=payload.crime_type.strip(),
+        description=payload.description,
         fir_number=payload.fir_number,
         victim_alias=payload.victim_alias,
         date_range_start=payload.date_range_start,

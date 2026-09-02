@@ -1,0 +1,7 @@
+{
+  "to": "preview.investigator@example.com",
+  "subject": "Your DRISHYAM sign-in code",
+  "verification_code": "648353",
+  "purpose": "login_otp",
+  "created_at": "2026-08-23T18:34:44.798069+00:00"
+}

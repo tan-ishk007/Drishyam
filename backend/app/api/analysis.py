@@ -6,8 +6,9 @@ from sqlalchemy import String, cast, or_, select
 from app.api.deps import CurrentUser, DbSession
 from app.graph import build_case_graph
 from app.models.entities import Alert, AuditLog, Entity, Event, EventEntity, EvidenceFile, ProcessingRun, Transaction
-from app.schemas.evidence import AlertResponse, AuditLogResponse, ProcessingRunResponse, SearchResultResponse, TimelineEventResponse, TransactionResponse
+from app.schemas.evidence import AlertResponse, AuditLogResponse, CrossCaseLinkResponse, ProcessingRunResponse, SearchResultResponse, TimelineEventResponse, TransactionResponse
 from app.services.cases import require_case_access
+from app.services.cross_case import find_cross_case_links
 
 router = APIRouter(prefix="/cases/{case_id}", tags=["analysis"])
 
@@ -76,6 +77,17 @@ def audit_log(case_id: str, current_user: CurrentUser, db: DbSession) -> list[Au
         select(AuditLog).where(AuditLog.case_id == case_id).order_by(AuditLog.created_at.desc()).limit(500)
     ).all()
     return [AuditLogResponse.model_validate(entry, from_attributes=True) for entry in entries]
+
+
+@router.get("/cross-case-links", response_model=list[CrossCaseLinkResponse])
+def cross_case_links(case_id: str, current_user: CurrentUser, db: DbSession) -> list[dict]:
+    """Return exact cross-case leads only from cases the caller is authorized to inspect.
+
+    The response is read-only and source-backed. It deliberately returns candidate
+    links rather than asserting a shared person, event, or culpability.
+    """
+    require_case_access(db, case_id, current_user)
+    return find_cross_case_links(db, case_id, current_user)
 
 
 @router.get("/search", response_model=list[SearchResultResponse])

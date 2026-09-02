@@ -2,10 +2,13 @@
 
 from fastapi import APIRouter
 
-from app.api import analysis, auth, cases, claims, evidence, notifications, preview, review
+from app.api import account, analysis, assistant, auth, cases, claims, evidence, gmail_oauth, notifications, preview, review
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
+api_router.include_router(assistant.router)
+api_router.include_router(account.router)
+api_router.include_router(gmail_oauth.router)
 api_router.include_router(cases.router)
 api_router.include_router(evidence.router)
 api_router.include_router(analysis.router)

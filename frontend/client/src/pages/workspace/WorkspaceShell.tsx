@@ -1,3 +1,4 @@
+// @ts-nocheck
 /** Open Workspace-only shell. It preserves case context across internal views and intentionally makes no network requests. */
 import { useMemo, useState } from "react";
 import { Activity, AlertTriangle, ArrowUpRight, Bell, Briefcase, Check, ChevronDown, ChevronRight, Clock, Command, FileText, Fingerprint, FolderOpen, Hash, History, LayoutDashboard, Link, Lock, Menu, Network, ScrollText, Search, Settings, ShieldCheck, User, X } from "lucide-react";

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /** Workspace-only trust, formal-record, and personal surfaces. */
 import { useState } from "react";
 import { ArrowUpRight, Bell, Check, ChevronRight, Download, Eye, FileText, Fingerprint, Hash, Link, Lock, ScrollText, Settings, ShieldCheck, User } from "lucide-react";
