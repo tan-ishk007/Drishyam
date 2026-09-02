@@ -8,9 +8,6 @@ DRISHYAM is a digital investigation platform designed to help investigators orga
 
 The platform is **inspired by SIH25198** and follows the broader objective of evidence-driven digital investigation. It is **not an exact replica** of any official problem statement or existing product.
 
-![DRISHYAM platform](docs/assets/drishyam-platform-preview.png)
-
-> If the preview image is not included in the repository, remove the image line or replace it with the project’s approved screenshot path. Do not commit private case data or real evidence screenshots.
 
 ## Why DRISHYAM?
 
@@ -206,19 +203,6 @@ A clear demonstration can follow this sequence:
 
 For SIH evaluation, use only clearly labelled synthetic records. Keep the graph compact enough that the relationships remain readable and explainable.
 
-## Team contributions
-
-The project is divided into exactly four contribution areas. Each member should work on a named branch, create meaningful commits, push the branch, and open a Pull Request against `develop`. Direct pushes to `main` should be avoided.
-
-| Member | Contribution area | Suggested branch |
-|---|---|---|
-| **Member 1** | Complete Home frontend: landing page, hero, public sections, animations, Trace Orb/pet interface, and responsive Home presentation | `feature/member1-home-frontend` |
-| **Member 2** | Open Workspace and remaining frontend: workspace shell, evidence views, timeline, graph, transactions, alerts, review, reports, profile/settings UI, and frontend API integration | `feature/member2-workspace-frontend` |
-| **Member 3** | Complete Login/Signup backend: email OTP, Google sign-in, sessions, verification, identity mapping, session revocation, auth protection, auth schemas, and auth-related migrations/tests | `feature/member3-auth-backend` |
-| **Member 4** | Remaining backend: cases, evidence, processing, storage, timeline, graph, transactions, alerts, review/report APIs, Celery workers, database services, report generation, and non-auth migrations/tests | `feature/member4-core-backend` |
-
-Shared files such as routing, common CSS, package manifests, Docker files, and README changes must be coordinated before editing. The contribution history must remain truthful: do not pretend that an earlier single bulk commit was created by four people. Build the contribution trail through new branches, commits, Pull Requests, reviews, and merged features.
-
 ## GitHub contribution workflow
 
 ```bash
@@ -253,10 +237,6 @@ Recommended project wording:
 > **DRISHYAM — A Digital Investigation and Evidence Intelligence Platform inspired by SIH25198.** It helps investigators preserve, connect, review, and report fragmented digital evidence through a secure, case-centered workspace.
 
 Use “inspired by SIH25198” rather than claiming that DRISHYAM is the official problem statement implementation or an exact replica.
-
-## License
-
-Add the team’s approved license here before making the repository public. If no license has been selected, write `License: To be decided by the project team` rather than implying permissions that have not been granted.
 
 ## References
 
