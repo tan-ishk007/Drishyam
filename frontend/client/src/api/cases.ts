@@ -6,6 +6,7 @@ export type BackendCase = {
   case_number: string;
   title: string;
   crime_type: string;
+  description: string | null;
   fir_number: string | null;
   victim_alias: string | null;
   status: "open" | "in_review" | "closed" | "archived";
@@ -13,6 +14,17 @@ export type BackendCase = {
   owner_id: string;
   created_at: string;
   updated_at: string;
+};
+
+export type CaseCreatePayload = {
+  title: string;
+  crime_type: string;
+  description: string;
+  priority: "low" | "medium" | "high" | "critical";
+  fir_number?: string;
+  victim_alias?: string;
+  date_range_start?: string;
+  notes?: string;
 };
 
 export type CaseSummary = {
@@ -23,6 +35,10 @@ export type CaseSummary = {
 
 export async function listCases(): Promise<BackendCase[]> {
   return (await apiClient.get<BackendCase[]>("/cases")).data;
+}
+
+export async function createCase(payload: CaseCreatePayload): Promise<BackendCase> {
+  return (await apiClient.post<BackendCase>("/cases", payload)).data;
 }
 
 export async function getCaseSummary(caseId: string): Promise<CaseSummary> {

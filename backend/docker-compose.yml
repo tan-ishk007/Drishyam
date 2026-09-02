@@ -1,0 +1,27 @@
+services:
+  api:
+    build: .
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    env_file: ${DRISHYAM_RUNTIME_ENV_FILE:-.env}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./generated_reports:/app/generated_reports
+      - gmail_api_oauth:/var/lib/drishyam-oauth
+    restart: unless-stopped
+
+  worker:
+    build: .
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO --queues=evidence_fast,evidence_ocr,evidence_parse,evidence_enrich,reports
+    env_file: ${DRISHYAM_RUNTIME_ENV_FILE:-.env}
+    depends_on:
+      - api
+    volumes:
+      - ./data:/app/data
+      - ./generated_reports:/app/generated_reports
+      - gmail_api_oauth:/var/lib/drishyam-oauth
+    restart: unless-stopped
+
+volumes:
+  gmail_api_oauth:
