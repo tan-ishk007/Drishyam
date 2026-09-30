@@ -28,7 +28,14 @@ def _case(client, headers: dict[str, str], title: str) -> dict:
     response = client.post(
         "/api/v1/cases",
         headers=headers,
-        json={"title": title, "crime_type": "synthetic_cross_case_test", "priority": Priority.HIGH.value},
+        json={
+            "title": title,
+            "crime_type": "synthetic_cross_case_test",
+            # A description is mandatory on case creation; see
+            # test_case_description.py. This helper predates that rule.
+            "description": f"Synthetic cross-case authorization fixture for {title}. Contains no real evidence.",
+            "priority": Priority.HIGH.value,
+        },
     )
     assert response.status_code == 201, response.text
     return response.json()
@@ -56,7 +63,10 @@ def test_cross_case_links_return_exact_authorized_synthetic_matches_only(client)
     response = client.get(f"/api/v1/cases/{first_case['id']}/cross-case-links", headers=headers)
     assert response.status_code == 200, response.text
     links = response.json()
-    assert {item["signal_type"] for item in links} >= {"upi_id", "phone", "utr", "evidence_sha256"}
+    # Both extraction generations now mint identity nodes through one resolver, so a UPI handle is
+    # "upi" and a transaction reference is "reference" whichever pipeline read it. Before that they
+    # were two nodes under two names, and the same handle in two cases did not always link them.
+    assert {item["signal_type"] for item in links} >= {"upi", "phone", "reference", "evidence_sha256"}
     assert all(item["linked_case"]["id"] == second_case["id"] for item in links)
     assert all("not an identity or culpability finding" in item["explanation"] or "not a conclusion" in item["explanation"] for item in links)
 

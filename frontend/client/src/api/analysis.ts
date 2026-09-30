@@ -16,6 +16,13 @@ export type GraphRecord = {
     source_event_id?: string | null;
     review_status?: string | null;
     time_precision?: string | null;
+    identifier_type?: string;
+    evidence_count?: number;
+    occurrences?: number;
+    strength?: number;
+    strength_band?: string;
+    connected?: boolean;
+    bridge_count?: number;
   }>;
   edges: Array<{
     id?: string;
@@ -26,11 +33,35 @@ export type GraphRecord = {
     source_evidence_id?: string | null;
     source_event_id?: string | null;
     occurred_at?: string | null;
+    link_style?: string;
+    basis?: string;
+    strength?: number;
+    strength_band?: string;
   }>;
   metrics: { node_count: number; edge_count: number; components: number };
+  /** Plain-language description of what ties the evidence together. */
+  connections?: Array<{
+    identifier: string;
+    identifier_label: string;
+    evidence_names: string[];
+    evidence_count: number;
+    strength_band: string;
+    sentence: string;
+    caveat: string;
+  }>;
+  summary?: {
+    evidence_count: number;
+    connected_evidence: number;
+    isolated_evidence: Array<{ id: string; label: string }>;
+    bridge_count: number;
+    strongest: Array<{ label: string; identifier_type: string; evidence_count: number; strength_band: string }>;
+  };
 };
 export type TransactionRecord = { id: string; event_id: string | null; source_evidence_id: string; amount: number; currency: string; occurred_at: string | null; reference_id: string | null; sender_value: string | null; receiver_value: string | null; source_kind: string; confidence: number; review_status: string };
-export type AlertRecord = { id: string; rule_code: string; severity: string; status: string; explanation: string; affected_evidence_ids: string[]; related_event_id: string | null; generated_at: string; reviewed_at: string | null };
+/** One line of an alert's sequence: what a source states, and where to read it. */
+export type AlertStep = { statement: string; when: string | null; evidence_id: string | null; place: string | null; source_reference: Record<string, unknown>; kind: "fact" | "gap" | "closing" };
+
+export type AlertRecord = { id: string; rule_code: string; severity: string; status: string; explanation: string; affected_evidence_ids: string[]; sequence: AlertStep[] | null; related_event_id: string | null; generated_at: string; reviewed_at: string | null };
 export type ProcessingRunRecord = { id: string; evidence_id: string; evidence_name: string; pipeline_stage: string; pipeline_version: string; state: string; attempt: number; progress: number; warning_messages: unknown[]; failure_reason: string | null; started_at: string | null; completed_at: string | null; created_at: string };
 export type AuditLogRecord = { id: string; actor_id: string | null; action: string; object_type: string; object_id: string | null; outcome: string; details: Record<string, unknown>; previous_hash: string | null; event_hash: string | null; created_at: string };
 export type SearchResultRecord = { kind: string; id: string; target: string; title: string; excerpt: string; details: Record<string, unknown> };

@@ -195,7 +195,9 @@
 @keyframes archive-pin-pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.35); opacity: .75; } }
 
 /* Homepage evidence journey: deliberate parchment depth, burgundy trace line, and GPU-safe evidence motion. */
-.journey-shell { min-height: 470vh; overflow: visible; }
+/* Roughly 67vh of scroll per stage. Tuned for seven; raised with the eighth so each step keeps
+   the same amount of travel rather than the whole journey getting faster. */
+.journey-shell { min-height: 535vh; overflow: visible; }
 .journey-sticky { position: sticky; top: 5.4rem; display: grid; height: calc(100svh - 5.4rem); grid-template-rows: auto minmax(0, 1fr) auto; gap: clamp(.75rem, 1.7vh, 1.35rem); align-content: stretch; overflow: visible; }
 .journey-sticky > .text-center { align-self: start; }.journey-sticky .journey-content-grid { min-height: 0; height: 100%; margin-top: 0; }.journey-sticky .journey-content-grid > * { min-height: 0; height: 100%; }.journey-sticky .journey-stage, .journey-sticky .journey-state-card { height: 100% !important; min-height: 0; }.journey-sticky .journey-rail { align-self: end; margin-top: 0; overflow: visible; padding-bottom: .25rem; }
 .journey-shell::before { content: ""; position: absolute; left: 9%; right: 9%; top: 3.2rem; height: 1px; background: linear-gradient(90deg, transparent, rgba(127,29,29,.42), transparent); }
@@ -203,7 +205,7 @@
 .journey-content-grid { align-items: stretch; }
 .journey-content-grid > * { min-width: 0; }
 .journey-sticky > .text-center { position: relative; z-index: 1; }
-.journey-sticky > .text-center::after { content: "EVIDENCE REGISTER / 07 STAGES"; display: block; margin: 1rem auto 0; width: fit-content; border: 1px solid #decdb9; background: #fffaf1; padding: .3rem .55rem; font-family: "DM Mono", monospace; font-size: 8px; font-weight: 700; letter-spacing: .12em; color: #7f1d1d; }
+.journey-sticky > .text-center::after { content: "EVIDENCE REGISTER / 08 STAGES"; display: block; margin: 1rem auto 0; width: fit-content; border: 1px solid #decdb9; background: #fffaf1; padding: .3rem .55rem; font-family: "DM Mono", monospace; font-size: 8px; font-weight: 700; letter-spacing: .12em; color: #7f1d1d; }
 .journey-rail { position: relative; border-top: 1px solid rgba(188,163,133,.42); border-bottom: 1px solid rgba(188,163,133,.28); background: linear-gradient(90deg, transparent, rgba(255,250,241,.72) 12%, rgba(255,250,241,.72) 88%, transparent); padding-top: 1.3rem; }
 .journey-rail::before { content: "TRACE LINE / ACTIVE STAGE"; position: absolute; right: 1rem; top: .45rem; font-family: "DM Mono", monospace; font-size: 8px; font-weight: 700; letter-spacing: .12em; color: #96726b; }
 .journey-state-card { position: relative; overflow: hidden; }
@@ -265,3 +267,47 @@
 .evidence-network-center { transform-origin: center; }
 @media (max-width: 640px) { .evidence-reconstruction { min-height: 430px; }.evidence-reconstruction .evidence-network-card { min-width: 110px; padding: .65rem; }.evidence-reconstruction .evidence-network-card:nth-child(n) { left: 50% !important; transform: translateX(-50%) !important; }.evidence-reconstruction .evidence-network-card:nth-child(1) { top: 15% !important; }.evidence-reconstruction .evidence-network-card:nth-child(2) { top: 31% !important; }.evidence-reconstruction .evidence-network-card:nth-child(3) { top: 47% !important; }.evidence-reconstruction .evidence-network-card:nth-child(4) { top: 63% !important; }.evidence-reconstruction .evidence-network-card:nth-child(5) { top: 79% !important; }.evidence-reconstruction svg { display: none; }.evidence-reconstruction .evidence-network-center { left: auto; right: .75rem; top: auto; bottom: .75rem; transform: none; width: 126px; opacity: .92; } }
 @media (max-width: 1023px) { .journey-shell { min-height:470vh; }.journey-sticky { position:sticky; top:4rem; height:calc(100svh - 4rem); grid-template-rows:auto 240px minmax(0,1fr); gap:.65rem; max-height:none; overflow:visible; }.journey-shell::before, .journey-shell::after, .journey-sticky > .text-center::after { display:none; }.journey-shell h2 { font-size:2.5rem; line-height:.98; }.journey-content-grid { margin-top:0; }.journey-content-grid > :last-child { display:none; }.journey-stage { height:240px !important; min-height:240px !important; }.journey-rail { margin-top:0; overflow:visible; padding-top:.5rem; }.journey-rail::before { display:none; }.journey-rail > div { min-width:0 !important; padding-left:4rem; }.journey-track, .journey-progress, .journey-capsule { display:none; }.journey-steps { grid-template-columns:1fr !important; gap:.08rem; }.journey-step { min-height:39px; padding-top:0; text-align:left; }.journey-step-node { left:-48px; top:0; height:30px; width:30px; transform:none; }.journey-step-node .mono { font-size:8px; }.journey-step-node svg { display:none; }.journey-step:not(:last-child)::after { content:""; position:absolute; left:-33px; top:30px; height:12px; width:1px; background:#b77770; }.journey-step p { margin:0; }.journey-step p:last-child { display:none; }.capability-card::before, .security-card::before { display:none; } }
+
+/* ---------------------------------------------------------------- source proof
+   The mark wraps the element it marks rather than floating over it at a measured position. Placed
+   by percentage it drifted onto the neighbouring line as soon as the text reflowed, which is the
+   exact failure this section exists to argue against.
+
+   It does not fade in; it closes. A box that arrives already in position reads as a label printed
+   on the page, and the point being made is that the system went and found the place. */
+.source-frame { position: relative; }
+.source-mark { position: relative; display: inline-block; border-radius: 3px; padding: 1px 5px; margin: 0 -5px; color: #f7ece9; background: rgba(224,72,60,.22); box-shadow: inset 0 0 0 2px #e0483c; animation: source-mark-snap 640ms cubic-bezier(.2,1.2,.35,1) both; }
+.source-frame-light .source-mark { color: #7f1d1d; }
+.source-claim { animation: source-claim-in 520ms cubic-bezier(.23,1,.32,1) 200ms both; }
+@keyframes source-mark-snap {
+  0%   { opacity: 0; transform: scale(1.35); box-shadow: inset 0 0 0 2px rgba(224,72,60,0); background: rgba(224,72,60,0); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; transform: scale(1); box-shadow: inset 0 0 0 2px #e0483c; background: rgba(224,72,60,.22); }
+}
+@keyframes source-claim-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ---------------------------------------------------------------- criminal network
+   Nodes land, then the edges draw between them. The order is the argument: entities first, and the
+   relationship only once something states it. */
+.net-node { animation: net-node-in 520ms cubic-bezier(.23,1,.32,1) both; }
+.net-edges path { stroke-dasharray: 420; stroke-dashoffset: 420; animation: net-edge-draw 1500ms cubic-bezier(.23,1,.32,1) forwards; }
+.net-pulse { animation: net-pulse 2.8s ease-in-out infinite; transform-origin: center; }
+@keyframes net-node-in { from { opacity: 0; transform: translateY(9px) scale(.94); } to { opacity: 1; transform: none; } }
+@keyframes net-edge-draw { to { stroke-dashoffset: 0; } }
+@keyframes net-pulse { 0%, 100% { r: 7; opacity: 1; } 50% { r: 10; opacity: .7; } }
+
+/* ---------------------------------------------------------------- restraint
+   A card that states a refusal should settle rather than flourish. */
+.refusal-card { position: relative; transition: transform 240ms cubic-bezier(.23,1,.32,1), border-color 240ms cubic-bezier(.23,1,.32,1); }
+.refusal-card:hover { transform: translateY(-4px); border-color: rgba(224,72,60,.5); }
+.refusal-strike { position: relative; display: inline-block; }
+.refusal-strike::after { content: ""; position: absolute; left: -2%; top: 52%; height: 2px; width: 104%; background: #e0483c; transform: scaleX(0); transform-origin: left; animation: refusal-strike-in 720ms cubic-bezier(.23,1,.32,1) 420ms forwards; }
+.is-revealed .refusal-strike::after { animation-play-state: running; }
+@keyframes refusal-strike-in { to { transform: scaleX(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .source-mark, .source-claim, .net-node, .net-edges path, .net-pulse, .refusal-strike::after { animation: none; }
+  .source-mark { opacity: 1; transform: none; box-shadow: inset 0 0 0 2px #e0483c; background: rgba(224,72,60,.22); }
+  .net-edges path { stroke-dashoffset: 0; }
+  .refusal-strike::after { transform: scaleX(1); }
+}

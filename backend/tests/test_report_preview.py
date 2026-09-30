@@ -1,11 +1,18 @@
-"""One-off visual validation artifact for the upgraded report service; not part of the active product source."""
+"""End-to-end proof that a case of mixed synthetic evidence produces a downloadable report.
 
+This began as a one-off visual check and wrote its PDF to an absolute path on the machine it was
+authored on, so it failed everywhere else. The pipeline assertions are worth keeping, so the
+artifact now goes to the test's own temporary directory. Set DRISHYAM_REPORT_PREVIEW_DIR to keep a
+copy somewhere you can open it.
+"""
+
+import os
 from pathlib import Path
 
 from scripts.generate_synthetic_evidence import generate
 
 
-def test_write_upgraded_report_preview(client, case_factory):
+def test_write_upgraded_report_preview(client, case_factory, tmp_path):
     case, headers = case_factory()
     categories = {
         "whatsapp": "whatsapp_chat",
@@ -37,5 +44,11 @@ def test_write_upgraded_report_preview(client, case_factory):
     assert report.status_code == 202, report.text
     pdf = client.get(f"/api/v1/cases/{case['id']}/reports/{report.json()['id']}/download", headers=headers)
     assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
-    preview = Path("/home/ubuntu/drishyam_local_runtime/validated_report_preview.pdf")
+    preview = tmp_path / "validated_report_preview.pdf"
     preview.write_bytes(pdf.content)
+    assert preview.stat().st_size > 0
+
+    if keep := os.environ.get("DRISHYAM_REPORT_PREVIEW_DIR"):
+        destination = Path(keep)
+        destination.mkdir(parents=True, exist_ok=True)
+        (destination / "validated_report_preview.pdf").write_bytes(pdf.content)

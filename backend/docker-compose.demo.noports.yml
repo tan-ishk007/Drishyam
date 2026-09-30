@@ -1,0 +1,8 @@
+# The demo stack exists only to run the test suite against a local Postgres. It must not compete
+# for port 8000 with the stack the workspace actually talks to -- two API containers bound to the
+# same port means whichever starts second dies, and the one that dies is whichever was needed.
+services:
+  api:
+    ports: !reset []
+  worker:
+    ports: !reset []

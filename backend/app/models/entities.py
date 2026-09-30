@@ -58,6 +58,18 @@ class EvidenceStatus(str, Enum):
     AWAITING_REVIEW = "awaiting_review"
     COMPLETED = "completed"
     FAILED = "failed"
+    # Grounded-pipeline stage vocabulary. These are additive: `EvidenceFile.status` still moves only
+    # through the legacy values above, because the frontend pins those as a closed union. The
+    # granular lifecycle is served from the evidence stages endpoint instead.
+    RECEIVED = "received"
+    TYPE_DETECTED = "type_detected"
+    OCR_COMPLETED = "ocr_completed"
+    LOCAL_MODEL_COMPLETED = "local_model_completed"
+    GROQ_ESCALATED = "groq_escalated"
+    VALIDATED = "validated"
+    REVIEW_REQUIRED = "review_required"
+    READY = "ready"
+    PARTIALLY_PROCESSED = "partially_processed"
 
 
 class ProcessingState(str, Enum):
@@ -403,6 +415,11 @@ class Alert(Base):
     status: Mapped[AlertStatus] = mapped_column(SAEnum(AlertStatus, name="alert_status"), nullable=False, default=AlertStatus.OPEN)
     explanation: Mapped[str] = mapped_column(Text, nullable=False)
     affected_evidence_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    # The sourced facts behind this alert, in the order the sources record them. Each step names the
+    # file and place it was read from, so a reader can open any line of the story rather than being
+    # handed a conclusion and a pile of file ids. Null means the alert predates the column and has
+    # no sequence -- which is not the same as a sequence in which nothing happened.
+    sequence: Mapped[list | None] = mapped_column(JSON)
     related_event_id: Mapped[str | None] = mapped_column(ForeignKey("events.id", ondelete="SET NULL"))
     idempotency_key: Mapped[str] = mapped_column(String(256), unique=True, nullable=False)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
@@ -410,6 +427,146 @@ class Alert(Base):
 
     case: Mapped[Case] = relationship("Case", back_populates="alerts")
     __table_args__ = (Index("ix_alerts_case_status_severity", "case_id", "status", "severity"),)
+
+
+class CaseVisit(Base):
+    """When one user last opened one case.
+
+    Per user rather than per case: what is new to an investigator returning after a week is not new
+    to the colleague who uploaded it yesterday, and a single shared timestamp would be wrong for
+    everybody except the last person through the door.
+
+    It records that somebody opened the case, which the audit log also records. This is not a
+    duplicate of that: the audit log is the account of who did what, and reading it backwards to
+    find one user's previous visit on every case open would be a query over the whole history to
+    answer a question one row can hold.
+    """
+
+    __tablename__ = "case_visits"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    last_opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (UniqueConstraint("case_id", "user_id", name="uq_case_visit"),)
+
+
+class CaseNote(Base):
+    """Something an investigator knows, kept beside what the system read.
+
+    An investigator holds things no evidence file states: what a witness said on the doorstep, which
+    of two spellings is the same person, why a lead was dropped. That belongs in the case, not in a
+    notebook that leaves with them.
+
+    **It is never mixed into extracted facts.** A note lives in its own table, is returned through
+    its own endpoint, and is marked as investigator commentary everywhere it is shown, including in
+    the report. The whole extraction layer is built on the line between what a source states and
+    what somebody concluded; a note that could be mistaken for the former would erase it.
+
+    Deletion is recorded rather than performed. A note that shaped an investigation and then
+    vanished without trace is exactly the kind of gap a defence should be able to see.
+    """
+
+    __tablename__ = "case_notes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True, nullable=False)
+    # What the note is about: an entity, a relation, or the case itself.
+    subject_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    subject_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    author_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+    __table_args__ = (Index("ix_case_notes_subject", "case_id", "subject_type", "subject_id"),)
+
+
+class PriorRecord(Base):
+    """One entry in the national record of registered cases, as this deployment holds it.
+
+    This is a different source from the shared ledger and answers a different question. The ledger
+    says another force is working a live case that touches this identity, and deliberately holds
+    nothing else. This says a case involving this identity was registered before, and comes from an
+    authoritative record that is entitled to hold the details -- an NCRB or CCTNS extract in a real
+    deployment, and a synthetic dataset here.
+
+    **Disposal is not optional.** A record store that showed convictions and quietly omitted
+    acquittals and closures would be a lie told by arithmetic, and it is the lie that turns a
+    lookup into an accusation. Every row carries what actually happened to the case.
+
+    Nothing here is evidence in the case a reader is working. Under section 46 of the Bharatiya
+    Sakshya Adhiniyam a person's previous bad character is generally not relevant, and "he did it
+    before" is precisely the reasoning the rest of this product refuses to make. The record is here
+    so an investigator can find the officer who dealt with it, not so a case can lean on it.
+    """
+
+    __tablename__ = "prior_records"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    # The canonical form the resolver produces, so a number written four ways still matches.
+    identifier_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    identifier_value: Mapped[str] = mapped_column(String(512), index=True, nullable=False)
+    subject_name: Mapped[str | None] = mapped_column(String(160))
+    record_reference: Mapped[str] = mapped_column(String(96), nullable=False)
+    police_station: Mapped[str] = mapped_column(String(160), nullable=False)
+    district: Mapped[str | None] = mapped_column(String(160))
+    sections: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    registered_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # What became of it: under_investigation, chargesheeted, convicted, acquitted, closed, quashed.
+    disposal: Mapped[str] = mapped_column(String(32), nullable=False)
+    disposal_on: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    contact_officer: Mapped[str | None] = mapped_column(String(320))
+    source: Mapped[str] = mapped_column(String(96), nullable=False, default="synthetic-national-dataset")
+
+    __table_args__ = (
+        Index("ix_prior_records_identifier", "identifier_type", "identifier_value"),
+        UniqueConstraint("record_reference", "identifier_type", "identifier_value", name="uq_prior_record_identity"),
+    )
+
+
+class LedgerEntry(Base):
+    """One identifier published to the shared ledger, as a hash and nothing else.
+
+    This is the only store in this product that several forces read and write. Everywhere else a
+    local hash chain is the honest answer, because there is one party and it is trusted; here the
+    parties are different districts who must be able to find a shared identifier without either
+    being able to read the other's case, or to quietly remove an entry once it is written.
+
+    **What is here and what is deliberately not.** The identifier itself never is: only a keyed
+    digest of it, which two districts sharing the key both compute to the same value. The case
+    reference and a contact are here, because the entire point is that somebody can pick up a phone.
+    No evidence, no names, no statement about what the case contains.
+
+    Chained like the audit log, so an entry cannot be removed or backdated by whoever holds the
+    store -- which is the property a shared ledger has to have and a plain table does not.
+    """
+
+    __tablename__ = "ledger_entries"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    # HMAC-SHA256 over "type:canonical value", keyed with the secret the participating districts
+    # share. A plain digest would not do: the space of phone numbers is small enough to enumerate,
+    # so an unkeyed hash of one is the number itself with extra steps.
+    identifier_digest: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    case_reference: Mapped[str] = mapped_column(String(64), nullable=False)
+    contact: Mapped[str] = mapped_column(String(320), nullable=False)
+    published_by_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    # The case this was published from. Local bookkeeping so a case can withdraw what it published
+    # and can be told what it already has out there; never returned to another district.
+    source_case_id: Mapped[str | None] = mapped_column(ForeignKey("cases.id", ondelete="SET NULL"), index=True)
+    previous_hash: Mapped[str | None] = mapped_column(String(64))
+    entry_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (
+        # One district publishing the same identifier for the same case twice adds nothing and
+        # would make the ledger's own counts meaningless.
+        UniqueConstraint("identifier_digest", "case_reference", name="uq_ledger_digest_case"),
+        Index("ix_ledger_published_at", "published_at"),
+    )
 
 
 class ReviewDecision(Base):
@@ -459,7 +616,14 @@ class Report(Base):
     )
     review_snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     redaction_profile: Mapped[str] = mapped_column(String(64), nullable=False, default="standard")
+    # Who this report is for. Redaction says what to hide from a reader; the profile says what that
+    # reader is being handed at all.
+    profile: Mapped[str] = mapped_column(String(32), nullable=False, default="case_file")
     storage_key: Mapped[str | None] = mapped_column(String(1024), unique=True)
+    # The numbered findings exactly as this report printed them, each keeping the evidence file and
+    # the place inside it. Kept rather than recomputed: a relationship added or reviewed since would
+    # renumber the list, and F-07 in a filed document would come to mean a different statement.
+    findings: Mapped[list | None] = mapped_column(JSON)
     generated_by_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
     failure_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
@@ -478,6 +642,11 @@ class TrustifyReceipt(Base):
     report_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     manifest_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     audit_chain_hash: Mapped[str | None] = mapped_column(String(64))
+    # One value standing for the whole set of evidence this report covered, and the leaves it was
+    # built from. The leaves are kept so an inclusion proof can be produced later for any one file
+    # without rebuilding the set from a case that has moved on since.
+    merkle_root: Mapped[str | None] = mapped_column(String(64))
+    merkle_leaves: Mapped[list | None] = mapped_column(JSON)
     review_snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     generator_version: Mapped[str] = mapped_column(String(64), nullable=False, default="trustify-v1")
     manifest_storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)
@@ -580,6 +749,269 @@ class NotificationPreference(Base):
 
     user: Mapped[User] = relationship("User", back_populates="notification_preferences")
     __table_args__ = (UniqueConstraint("user_id", "category", name="uq_notification_preference_user_category"),)
+
+
+class RawExtractionArtifact(Base):
+    """One versioned, immutable layer of deterministic extraction for a piece of evidence.
+
+    Written and committed before any model runs, so a provider outage can never destroy extraction
+    that already succeeded.
+    """
+
+    __tablename__ = "raw_extraction_artifacts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    evidence_id: Mapped[str] = mapped_column(ForeignKey("evidence_files.id", ondelete="CASCADE"), index=True, nullable=False)
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True, nullable=False)
+    artifact_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    layer: Mapped[str] = mapped_column(String(48), nullable=False)
+    extractor_name: Mapped[str] = mapped_column(String(96), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(48), nullable=False)
+    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    quality_flags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("evidence_id", "artifact_version", "layer", name="uq_raw_artifact_version_layer"),
+        Index("ix_raw_artifacts_case_evidence", "case_id", "evidence_id"),
+    )
+
+
+class ModelInferenceRun(Base):
+    """One provider call. Raw model output is preserved verbatim, including when models disagree."""
+
+    __tablename__ = "model_inference_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    evidence_id: Mapped[str] = mapped_column(ForeignKey("evidence_files.id", ondelete="CASCADE"), index=True, nullable=False)
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True, nullable=False)
+    record_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    provider: Mapped[str] = mapped_column(String(48), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    role: Mapped[str] = mapped_column(String(24), nullable=False, default="local")
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    cache_key: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    raw_output: Mapped[str | None] = mapped_column(Text)
+    parsed_payload: Mapped[dict | None] = mapped_column(JSON)
+    grounding_report: Mapped[dict | None] = mapped_column(JSON)
+    error_json: Mapped[dict | None] = mapped_column(JSON)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("evidence_id", "record_key", "cache_key", name="uq_inference_run_cache"),
+        Index("ix_inference_case_evidence", "case_id", "evidence_id"),
+    )
+
+
+class NormalizedRecord(Base):
+    """A source-grounded observation. `null` is a meaningful, deliberate value in every column."""
+
+    __tablename__ = "normalized_records"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    evidence_id: Mapped[str] = mapped_column(ForeignKey("evidence_files.id", ondelete="CASCADE"), index=True, nullable=False)
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True, nullable=False)
+    workspace_id: Mapped[str | None] = mapped_column(String(36))
+    record_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_file_name: Mapped[str] = mapped_column(String(512), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(48), nullable=False)
+    observed_text: Mapped[str | None] = mapped_column(Text)
+    normalized_summary: Mapped[str | None] = mapped_column(Text)
+    event_type: Mapped[str | None] = mapped_column(String(120))
+    event_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    event_time_raw: Mapped[str | None] = mapped_column(String(160))
+    event_time_precision: Mapped[str] = mapped_column(String(24), nullable=False, default="unknown")
+    participant_a: Mapped[str | None] = mapped_column(String(255))
+    participant_b: Mapped[str | None] = mapped_column(String(255))
+    sender: Mapped[str | None] = mapped_column(String(255))
+    receiver: Mapped[str | None] = mapped_column(String(255))
+    message_direction: Mapped[str | None] = mapped_column(String(16))
+    chat_participant_identifier: Mapped[str | None] = mapped_column(String(255))
+    phone_numbers: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    email_addresses: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    account_identifiers: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    # SIH26189 entity classes. JSON lists to match the identifier columns above.
+    vehicle_identifiers: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    organisation_names: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    person_names: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    # What this record called each person: {name: role}. A role belongs to a reading, not to
+    # a person -- the same individual can be a witness in one source and a suspect in another.
+    person_roles: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    location_names: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    transaction_reference: Mapped[str | None] = mapped_column(String(160), index=True)
+    amount_value: Mapped[float | None] = mapped_column(Numeric(16, 2))
+    amount_currency: Mapped[str | None] = mapped_column(String(8))
+    # What the figure is — a payment, a request, a fee, or a balance. A balance is a position, not a
+    # transfer, so it must never be projected into the transaction trail.
+    amount_role: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown", server_default="unknown")
+    location: Mapped[str | None] = mapped_column(String(255))
+    device_identifier: Mapped[str | None] = mapped_column(String(160))
+    event_attributes: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    observation_basis: Mapped[str] = mapped_column(String(24), nullable=False, default="unknown")
+    field_provenance: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    model_confidence: Mapped[float | None] = mapped_column(Numeric(5, 4))
+    validation_confidence: Mapped[float | None] = mapped_column(Numeric(5, 4))
+    final_confidence_band: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown")
+    validation_status: Mapped[str] = mapped_column(String(24), nullable=False, default="unvalidated")
+    requires_human_review: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    review_reason: Mapped[str | None] = mapped_column(Text)
+    review_state: Mapped[str] = mapped_column(String(24), nullable=False, default="unreviewed")
+    conflict_fields: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    escalated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    raw_extraction_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    raw_model_output_version: Mapped[str | None] = mapped_column(String(64))
+    extraction_model_name: Mapped[str | None] = mapped_column(String(160))
+    prompt_version: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("evidence_id", "record_key", "raw_extraction_version", name="uq_normalized_record_version"),
+        Index("ix_normalized_case_review", "case_id", "requires_human_review", "final_confidence_band"),
+        Index("ix_normalized_case_created", "case_id", "created_at"),
+    )
+
+
+class RecordRelation(Base):
+    """A candidate corroboration or contradiction. Never an automatic conclusion."""
+
+    __tablename__ = "record_relations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True, nullable=False)
+    relation_type: Mapped[str] = mapped_column(String(24), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="candidate")
+    detection_method: Mapped[str] = mapped_column(String(32), nullable=False, default="exact_match")
+    evidence_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    record_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    matching_or_conflicting_fields: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    source_references: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    confidence: Mapped[float] = mapped_column(Numeric(5, 4), nullable=False, default=0.0)
+    requires_human_review: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    review_decision: Mapped[str | None] = mapped_column(String(32))
+    reviewed_by_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    idempotency_key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (Index("ix_record_relations_case_type_status", "case_id", "relation_type", "status"),)
+
+
+class EntityOccurrence(Base):
+    """Every place one identifier was seen.
+
+    `Entity.source_evidence_id` can only name the file the identifier was *first* seen in, so a UPI
+    handle appearing in a chat, a receipt and a bank statement still looked like it belonged to one
+    file. Cross-evidence linking is the product's whole purpose, so where an identifier appears is
+    modelled as its own many-to-many fact rather than inferred by walking events.
+    """
+
+    __tablename__ = "entity_occurrences"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True, nullable=False)
+    entity_id: Mapped[str] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), index=True, nullable=False)
+    evidence_id: Mapped[str] = mapped_column(ForeignKey("evidence_files.id", ondelete="CASCADE"), index=True, nullable=False)
+    record_id: Mapped[str | None] = mapped_column(ForeignKey("normalized_records.id", ondelete="SET NULL"))
+    field_name: Mapped[str | None] = mapped_column(String(64))
+    observed_value: Mapped[str] = mapped_column(String(512), nullable=False)
+    source_reference: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    detection_method: Mapped[str] = mapped_column(String(64), nullable=False, default="grounded_pipeline")
+    # The role this source stated for this identity, where it stated one. Null is correct and
+    # common: most occurrences are of a number or a handle, which no source gives a role to.
+    stated_role: Mapped[str | None] = mapped_column(String(48))
+    confidence: Mapped[float] = mapped_column(Numeric(5, 4), nullable=False, default=0.5)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("entity_id", "evidence_id", "field_name", name="uq_entity_occurrence"),
+        Index("ix_entity_occurrence_case_entity", "case_id", "entity_id"),
+        Index("ix_entity_occurrence_case_evidence", "case_id", "evidence_id"),
+    )
+
+
+class EntityRelation(Base):
+    """One observation of a relationship between two resolved entities.
+
+    This is the criminal-network edge SIH26189 asks for. `EntityOccurrence` says an identifier was
+    seen in a file; this says two entities stand in a stated relation to each other.
+
+    **One row is one observation, not one relationship.** If three records show the same pair, that
+    is three rows. Collapsing them into a single edge with a counter would leave the edge pointing
+    at one arbitrary source, and an investigator who clicks it would be shown evidence that is not
+    the whole basis for the claim. Aggregation belongs to the read side; the write side keeps
+    provenance exact.
+
+    **Invariant:** `source_evidence_id` and `source_reference` are NOT NULL. An edge with no source
+    is not investigative intelligence, and refusing to write one is what keeps traceability
+    coverage at 100% by construction rather than by audit.
+    """
+
+    __tablename__ = "entity_relations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True, nullable=False)
+
+    subject_entity_id: Mapped[str] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), index=True, nullable=False)
+    object_entity_id: Mapped[str] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), index=True, nullable=False)
+    relation_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    # False means the source shows the two parties together but not who acted on whom. A call log
+    # that lists both numbers in one column proves contact, not who dialled. Such rows are stored
+    # once in a canonical order rather than twice in both directions.
+    directed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    source_evidence_id: Mapped[str] = mapped_column(ForeignKey("evidence_files.id", ondelete="CASCADE"), index=True, nullable=False)
+    source_record_id: Mapped[str | None] = mapped_column(ForeignKey("normalized_records.id", ondelete="SET NULL"))
+    source_reference: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # How the relation was established: stated_roles, table_row, or co_occurrence. It is shown to
+    # the reviewer, because "the source named both" is a far weaker claim than "the source states
+    # one paid the other".
+    basis: Mapped[str] = mapped_column(String(32), nullable=False, default="co_occurrence")
+
+    observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    time_precision: Mapped[str] = mapped_column(String(24), nullable=False, default="unknown")
+
+    extraction_method: Mapped[str] = mapped_column(String(64), nullable=False)
+    confidence: Mapped[float] = mapped_column(Numeric(5, 4), nullable=False, default=0.0)
+    verification_status: Mapped[str] = mapped_column(String(32), nullable=False, default="machine_extracted")
+    reviewed_by_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_note: Mapped[str | None] = mapped_column(Text)
+
+    idempotency_key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("ix_entity_relations_case_type", "case_id", "relation_type"),
+        Index("ix_entity_relations_subject", "case_id", "subject_entity_id"),
+        Index("ix_entity_relations_object", "case_id", "object_entity_id"),
+        Index("ix_entity_relations_case_time", "case_id", "observed_at"),
+        Index("ix_entity_relations_review", "case_id", "verification_status"),
+    )
+
+
+class RecordReview(Base):
+    """Append-only reviewer decisions. Original evidence and raw model output are never overwritten."""
+
+    __tablename__ = "record_reviews"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True, nullable=False)
+    record_id: Mapped[str | None] = mapped_column(ForeignKey("normalized_records.id", ondelete="CASCADE"), index=True)
+    relation_id: Mapped[str | None] = mapped_column(ForeignKey("record_relations.id", ondelete="CASCADE"), index=True)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    field_name: Mapped[str | None] = mapped_column(String(96))
+    previous_value: Mapped[dict | None] = mapped_column(JSON)
+    new_value: Mapped[dict | None] = mapped_column(JSON)
+    reason: Mapped[str | None] = mapped_column(Text)
+    reviewer_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    audit_log_id: Mapped[str | None] = mapped_column(String(36))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (Index("ix_record_reviews_case_created", "case_id", "created_at"),)
 
 
 class Notification(Base):

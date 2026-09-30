@@ -1,0 +1,37 @@
+# The Dockerfile ends with `COPY . .`. Without this file that copies the
+# runtime env file, local case artefacts and database dumps into every image
+# layer, where they survive `docker save`, a registry push and `docker history`.
+#
+# Runtime configuration must reach the container through env_file/environment
+# at run time, never through the build context.
+
+# --- secrets and runtime configuration -------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*credentials*
+*service-account*
+
+# --- local runtime state: real case artefacts, dumps, generated reports -----
+data/
+generated_reports/
+generated_evidence/
+reports_out/
+backups/
+.test_data/
+.crosscase_preview_data/
+
+# --- build noise ------------------------------------------------------------
+.git/
+.gitignore
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+docs/

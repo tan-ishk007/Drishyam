@@ -10,7 +10,13 @@ from sqlalchemy.orm import Session
 from app.models.entities import Case, CaseMembership, Entity, EvidenceFile, ReviewStatus, Role, Transaction, User
 
 
-MATCHABLE_ENTITY_TYPES = {"phone", "upi_id", "email", "url", "ifsc", "account_number", "utr"}
+# Both extraction generations now mint nodes through one resolver, so this lists the resolver's
+# vocabulary. The older spellings stay listed because cases processed before that change still
+# carry them, and dropping them would silently stop matching on evidence already on record.
+MATCHABLE_ENTITY_TYPES = {
+    "phone", "email", "upi", "account", "ifsc", "reference", "url", "vehicle", "device",
+    "upi_id", "account_number", "utr",
+}
 RELIABLE_REVIEW_STATUSES = {ReviewStatus.CONFIRMED, ReviewStatus.CORRECTED}
 
 

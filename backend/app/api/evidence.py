@@ -3,8 +3,8 @@
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
@@ -12,6 +12,7 @@ from app.models.entities import EvidenceFile, EvidenceStatus
 from app.schemas.evidence import EvidenceReceiptResponse, EvidenceResponse
 from app.services.audit import audit
 from app.services.cases import require_case_access
+from app.services import source_view
 from app.services.storage import delete_private_object, get_private_path, persist_upload, source_category
 from app.workers.tasks import process_evidence_task
 
@@ -65,6 +66,99 @@ def download_original(case_id: str, evidence_id: str, current_user: CurrentUser,
     audit(db, action="evidence.download_original", object_type="evidence_file", object_id=evidence.id, case_id=case_id, outcome="success", actor_id=current_user.id)
     db.commit()
     return FileResponse(get_private_path(evidence.storage_key), media_type=evidence.detected_mime, filename=evidence.original_name)
+
+
+@router.get("/{evidence_id}/source-view")
+def read_source_view(
+    case_id: str,
+    evidence_id: str,
+    current_user: CurrentUser,
+    db: DbSession,
+    value: str | None = Query(None, max_length=320, description="The value to find, when the reference alone does not place it."),
+    row: int | None = Query(None, ge=1),
+    column: str | None = Query(None, max_length=160),
+    page: int | None = Query(None, ge=1),
+    line_start: int | None = Query(None, ge=1),
+    line_end: int | None = Query(None, ge=1),
+    block_id: str | None = Query(None, max_length=64),
+) -> dict:
+    """Show one evidence file with the place a stored reference points at marked on it.
+
+    The parameters are the fields of a source reference as it is already stored on a relationship,
+    an entity occurrence or an assistant finding, so a caller passes back what it was given rather
+    than deriving anything of its own.
+
+    Reading a file's contents is a disclosure of evidence and is recorded as one. The response
+    reports whether the place was actually found: a viewer must be able to say "this is the source,
+    but the exact spot could not be located" instead of marking somewhere plausible.
+    """
+    require_case_access(db, case_id, current_user)
+    evidence = db.scalar(select(EvidenceFile).where(EvidenceFile.id == evidence_id, EvidenceFile.case_id == case_id))
+    if not evidence:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evidence record not found")
+
+    target = source_view.Target(
+        value=value,
+        row=row,
+        column=column,
+        page=page,
+        line_start=line_start,
+        line_end=line_end,
+        block_id=block_id,
+    )
+    view = source_view.build(db, evidence, target=target)
+    audit(
+        db,
+        action="evidence.source_view",
+        object_type="evidence_file",
+        object_id=evidence.id,
+        case_id=case_id,
+        outcome="success",
+        actor_id=current_user.id,
+        details={"kind": view.kind, "located": view.located},
+    )
+    db.commit()
+    return view.to_dict()
+
+
+@router.get("/{evidence_id}/page/{page_number}")
+def read_rendered_page(
+    case_id: str,
+    evidence_id: str,
+    page_number: int,
+    current_user: CurrentUser,
+    db: DbSession,
+) -> Response:
+    """One page of a document, rendered as an image so marks can be drawn on it.
+
+    A PDF is a picture of a record. Citing "page 1, line 6" makes a reviewer count lines; showing
+    the page with the line boxed makes them look. The image is rendered at the same scale the
+    marks were measured against, so a client can place them without knowing any PDF geometry.
+    """
+    require_case_access(db, case_id, current_user)
+    evidence = db.scalar(select(EvidenceFile).where(EvidenceFile.id == evidence_id, EvidenceFile.case_id == case_id))
+    if not evidence:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evidence record not found")
+    if (evidence.detected_mime or "") != "application/pdf":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This evidence is not a document with pages")
+
+    try:
+        image = source_view.render_page(get_private_path(evidence.storage_key), page_number)
+    except Exception as error:  # noqa: BLE001 - a page that will not render is a 404, not a crash
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="That page could not be rendered") from error
+
+    audit(
+        db,
+        action="evidence.page_render",
+        object_type="evidence_file",
+        object_id=evidence.id,
+        case_id=case_id,
+        outcome="success",
+        actor_id=current_user.id,
+        details={"page": page_number},
+    )
+    db.commit()
+    return Response(content=image, media_type="image/png")
 
 
 @router.post("/{evidence_id}/process", response_model=EvidenceResponse)

@@ -2,9 +2,11 @@
 
 from fastapi import APIRouter, Query
 from sqlalchemy import String, cast, or_, select
+from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, DbSession
 from app.graph import build_case_graph
+from app.graph.connections import build_connection_graph, describe_connections
 from app.models.entities import Alert, AuditLog, Entity, Event, EventEntity, EvidenceFile, ProcessingRun, Transaction
 from app.schemas.evidence import AlertResponse, AuditLogResponse, CrossCaseLinkResponse, ProcessingRunResponse, SearchResultResponse, TimelineEventResponse, TransactionResponse
 from app.services.cases import require_case_access
@@ -13,17 +15,51 @@ from app.services.cross_case import find_cross_case_links
 router = APIRouter(prefix="/cases/{case_id}", tags=["analysis"])
 
 
+# The deterministic pass stores one event per screenshot holding its raw OCR text. That event is
+# the parser's receipt, not a finding: once the grounded pass has read the same file, its record
+# carries the same words plus the reading, and showing both puts an untimed wall of OCR at the top
+# of every timeline. The raw event is kept in the database and in the report appendix; it is only
+# withheld from the chronology it duplicates.
+SUPERSEDABLE_EVENT_TYPES = {"ocr_document"}
+
+
+def _visible_timeline_events(db: Session, case_id: str) -> list[Event]:
+    events = db.scalars(select(Event).where(Event.case_id == case_id).order_by(Event.occurred_at.nulls_last(), Event.created_at)).all()
+    grounded_sources = {
+        event.source_file_id
+        for event in events
+        if (event.payload_json or {}).get("grounded_record_id") and event.source_file_id
+    }
+    return [
+        event
+        for event in events
+        if not (event.event_type in SUPERSEDABLE_EVENT_TYPES and event.source_file_id in grounded_sources)
+    ]
+
+
 @router.get("/timeline", response_model=list[TimelineEventResponse])
 def timeline(case_id: str, current_user: CurrentUser, db: DbSession) -> list[TimelineEventResponse]:
     require_case_access(db, case_id, current_user)
-    events = db.scalars(select(Event).where(Event.case_id == case_id).order_by(Event.occurred_at.nulls_last(), Event.created_at)).all()
+    events = _visible_timeline_events(db, case_id)
     return [TimelineEventResponse(id=item.id, source_file_id=item.source_file_id, occurred_at=item.occurred_at, original_time=item.original_time, time_precision=item.time_precision, event_type=item.event_type, description=item.description, amount=float(item.amount) if item.amount is not None else None, currency=item.currency, confidence=float(item.confidence), review_status=item.review_status, entities=[{"id": link.entity.id, "type": link.entity.entity_type, "value": link.entity.value} for link in db.scalars(select(EventEntity).where(EventEntity.event_id == item.id)).all()]) for item in events]
 
 
 @router.get("/graph")
 def graph(case_id: str, current_user: CurrentUser, db: DbSession) -> dict:
+    """Which evidence items are connected, and by what.
+
+    `nodes`/`edges` describe shared-identifier bridges — the question the graph exists to answer.
+    The older provenance projection is kept under `lineage` so existing readers keep working.
+    """
     require_case_access(db, case_id, current_user)
-    return build_case_graph(db, case_id)
+    connections = build_connection_graph(db, case_id)
+    lineage = build_case_graph(db, case_id)
+    return {
+        **connections,
+        "connections": describe_connections(db, case_id),
+        "lineage": lineage,
+        "metrics": lineage["metrics"],
+    }
 
 
 @router.get("/transactions", response_model=list[TransactionResponse])

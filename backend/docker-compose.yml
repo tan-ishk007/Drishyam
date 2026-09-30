@@ -1,6 +1,26 @@
+# DNS note: a host-side interception proxy (Proxifier) answers UDP:53 with fake
+# 127.110.0.0/16 addresses. Those addresses only mean anything inside the hooked
+# Windows processes, so a container that inherits them dials its own loopback and
+# every outbound host (Postgres, Redis, Gmail, Supabase) fails with
+# "connection refused". DNS over TCP is not intercepted, so each service resolves
+# through public resolvers with use-vc. No compose service is addressed by its
+# service name, so replacing the embedded resolver costs nothing.
 services:
   api:
     build: .
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    dns_opt:
+      - ndots:0
+      - use-vc
+      - timeout:3
+      - attempts:2
+    # Replacing the embedded resolver above also removes Docker's own resolution of
+    # host.docker.internal, which the local Ollama model host is reached through. A hosts
+    # entry restores it without depending on DNS at all.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     env_file: ${DRISHYAM_RUNTIME_ENV_FILE:-.env}
     ports:
@@ -13,6 +33,19 @@ services:
 
   worker:
     build: .
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    dns_opt:
+      - ndots:0
+      - use-vc
+      - timeout:3
+      - attempts:2
+    # Replacing the embedded resolver above also removes Docker's own resolution of
+    # host.docker.internal, which the local Ollama model host is reached through. A hosts
+    # entry restores it without depending on DNS at all.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO --queues=evidence_fast,evidence_ocr,evidence_parse,evidence_enrich,reports
     env_file: ${DRISHYAM_RUNTIME_ENV_FILE:-.env}
     depends_on:

@@ -5,8 +5,18 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
-data/private_storage/
-generated_reports/
-generated_evidence/
 *.log
 
+# Local runtime state. Never commit: these hold real case artefacts, OTP codes,
+# database dumps and generated reports. Archive them outside the repository
+# instead (see README, "Safe local setup").
+data/
+generated_reports/
+generated_evidence/
+reports_out/
+backups/
+.test_data/
+.crosscase_preview_data/
+
+# Synthetic benchmark files copied out of the container for uploading by hand.
+benchmark-evidence/

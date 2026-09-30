@@ -41,3 +41,29 @@ Thumbs.db
 
 # Large local demo video - keep outside GitHub
 /frontend/client/public/drishyam-how-it-works.mp4
+
+# Working documents and demo material stay local. Both are regenerable:
+#   docs/           - generated roadmaps, system documentation, slide content
+#   demo-evidence/  - the nine synthetic case files for the demo recording
+#                     (regenerate: backend $ python -c "from scripts import
+#                      benchmark_case; benchmark_case.generate()")
+docs/
+demo-evidence/
+
+# --- AI tooling installed into the working copy, not project code ---
+# Skills are reinstallable (`npx hyperframes skills update`) and carry bundled
+# media, so they must not travel to GitHub.
+.claude/
+.agents/
+skills-lock.json
+
+# --- Video composition working files ---
+# brag.mp4 / brag.jpg / the plan, brief and share copy are deliverables and stay
+# tracked. Everything under composition/ is regenerable scaffolding.
+brag-output/composition/
+brag-output/**/snapshots/
+brag-output/**/contact-sheet.jpg
+
+# --- Benchmark and demo output ---
+backend/generated_evidence/
+backend/benchmark_latest.json

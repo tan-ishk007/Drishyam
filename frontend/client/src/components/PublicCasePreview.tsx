@@ -5,9 +5,9 @@
 import { useMemo, useState } from "react";
 import { Activity, AlertTriangle, CircleDollarSign, Clock, Database, Eye, FileText, Files, Globe, Landmark, Link2, Network, Search, ShieldCheck, Sparkles } from "lucide-react";
 
-type Pane = "Overview" | "Timeline" | "Entity graph" | "Transaction trail" | "Alerts" | "Evidence vault" | "Report builder";
+type Pane = "Overview" | "Timeline" | "Network" | "Transaction trail" | "Alerts" | "Evidence vault" | "Report builder";
 
-const panes: Pane[] = ["Overview", "Timeline", "Entity graph", "Transaction trail", "Alerts", "Evidence vault", "Report builder"];
+const panes: Pane[] = ["Overview", "Timeline", "Network", "Transaction trail", "Alerts", "Evidence vault", "Report builder"];
 const timeline = [
   ["10:11", "WhatsApp message received", "New job offer linked to +91 98765 43210", "chat_export.txt", "94%"],
   ["10:16", "Phishing link shared", "Domain job-offer[.]in added to source entity", "chat_export.txt", "88%"],
@@ -68,7 +68,7 @@ function OverviewPane() {
 
 function PaneContent({ pane }: { pane: Pane }) {
   if (pane === "Timeline") return <TimelinePane/>;
-  if (pane === "Entity graph") return <GraphPane/>;
+  if (pane === "Network") return <GraphPane/>;
   if (pane === "Transaction trail") return <TransactionsPane/>;
   if (pane === "Alerts") return <AlertsPane/>;
   if (pane === "Evidence vault") return <EvidencePane/>;

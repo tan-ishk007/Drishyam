@@ -1,0 +1,122 @@
+# Self-contained demo stack.
+#
+# docker-compose.yml is the team's working setup: it talks to hosted Postgres,
+# hosted Redis, Supabase private storage and a local Ollama model host, all of
+# which need the private runtime env file. That is correct for development and
+# useless for anyone who has just cloned the repository.
+#
+# This file brings up everything locally instead. No provider credentials, no
+# Supabase, no model host, no network egress:
+#
+#   - Postgres and Redis run as containers
+#   - storage falls back to the filesystem backend
+#   - the model router runs in `mock` mode, so the grounded pipeline exercises
+#     its full path without contacting any provider
+#   - email goes to the console
+#
+# Usage:
+#   docker compose -f docker-compose.demo.yml up -d --build
+#   curl http://127.0.0.1:8000/health
+#   docker compose -f docker-compose.demo.yml down -v
+#
+# Do not point this file at real evidence or real credentials.
+
+name: drishyam-demo
+
+x-demo-env: &demo-env
+  ENVIRONMENT: demo
+  APP_NAME: DRISHYAM Demo
+  DATABASE_URL: postgresql+psycopg://drishyam:drishyam@db:5432/drishyam
+  REDIS_URL: redis://redis:6379/0
+
+  # Local filesystem storage. Supabase is not contacted.
+  STORAGE_BACKEND: filesystem
+  STORAGE_ROOT: /app/data/private_storage
+  GENERATED_REPORTS_ROOT: /app/generated_reports
+
+  # Demo-only secrets. These are deliberately non-secret and must never be
+  # reused for staging or any environment holding real evidence.
+  SECRET_KEY: demo-only-not-a-real-secret-change-me
+  OTP_PEPPER: demo-only-not-a-real-pepper-change-me
+  ACCESS_TOKEN_EXPIRE_MINUTES: "120"
+
+  # Verification codes are printed to the API container log.
+  EMAIL_PROVIDER: console
+  ALLOW_LOCAL_CONSOLE_EMAIL: "true"
+
+  # No provider is contacted. `mock` exercises the full grounded pipeline --
+  # extraction, validation, confidence, review queue -- without a model host.
+  EVIDENCE_INTELLIGENCE_ENABLED: "true"
+  LLM_ROUTING_MODE: mock
+  GROQ_ENABLED: "false"
+  EXTERNAL_EVIDENCE_TRANSMISSION: disabled
+
+  ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: drishyam
+      POSTGRES_PASSWORD: drishyam
+      POSTGRES_DB: drishyam
+    volumes:
+      - demo_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drishyam -d drishyam"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    # Not published. Nothing outside the compose network needs to reach it.
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    environment: *demo-env
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - demo_storage:/app/data
+      - demo_reports:/app/generated_reports
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+
+  worker:
+    build: .
+    environment: *demo-env
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO --queues=evidence_fast,evidence_ocr,evidence_parse,evidence_enrich,reports
+    depends_on:
+      api:
+        condition: service_started
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - demo_storage:/app/data
+      - demo_reports:/app/generated_reports
+    restart: unless-stopped
+
+volumes:
+  demo_pgdata:
+  demo_storage:
+  demo_reports:

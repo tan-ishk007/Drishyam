@@ -64,6 +64,9 @@ class AlertResponse(BaseModel):
     status: AlertStatus
     explanation: str
     affected_evidence_ids: list[str]
+    # The sourced facts behind the alert, in the order the sources record them. Null for alerts
+    # raised before alerts carried one; the reader is told that rather than shown an empty story.
+    sequence: list[dict] | None = None
     related_event_id: str | None
     generated_at: datetime
     reviewed_at: datetime | None

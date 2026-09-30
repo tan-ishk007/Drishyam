@@ -42,8 +42,9 @@ def extract_indicators(text: str) -> list[tuple[str, str, str, float]]:
         for match in pattern.finditer(text):
             value = match.group(1) if match.lastindex else match.group(0)
             indicators.append((entity_type, value.strip(), normalize(entity_type, value), 0.93 if entity_type in {"upi_id", "email", "ifsc", "utr", "account_number"} else 0.86))
-    for match in AMOUNT_PATTERN.finditer(text):
-        indicators.append(("amount", match.group(1), match.group(1).replace(",", ""), 0.95))
+    # An amount is an attribute of an event, not something that identifies a party. Registering it
+    # as an entity put a node called "25000" in the graph and a bar labelled "Amount" in the entity
+    # chart, neither of which names anybody. The value is still carried on the transaction row.
     return list({(item[0], item[2]): item for item in indicators}.values())
 
 
