@@ -1,4 +1,4 @@
-<div align="center">
+<img width="2752" height="1536" alt="research_references_recolored_fixed" src="https://github.com/user-attachments/assets/825a8696-8604-4cd6-a561-219dbaa4876e" /><div align="center">
 
 # DRISHYAM
 
@@ -8,7 +8,7 @@
 
 `Smart India Hackathon 2026` · `SIH26189` · `Ministry of Home Affairs (NCRB, Women Safety Division)` · `Blockchain & Cybersecurity`
 
-**[▶ Watch the demo](https://www.youtube.com/watch?v=7cmFEFSV8yM)**
+**[▶ Watch the demo](https://youtu.be/S00-t7_uyTw)**
 
 <sub>The demo walks through a synthetic case end to end: nine files in, a network out, and every finding opened at its source.</sub>
 
