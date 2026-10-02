@@ -572,7 +572,7 @@ Interactive documentation is served at `/docs` when the API is running.
 
 ```bash
 git clone https://github.com/tan-ishk007/Drishyam.git
-cd DRISHYAM/backend
+cd Drishyam/backend
 
 cp .env.example .env        # fill in DATABASE_URL, REDIS_URL, SECRET_KEY
 docker compose up -d        # runs migrations, then API on :8000 and the worker
