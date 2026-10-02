@@ -1,5 +1,3 @@
-<img width="2752" height="1536" alt="research_references_recolored_fixed" src="https://github.com/user-attachments/assets/825a8696-8604-4cd6-a561-219dbaa4876e" /><div align="center">
-
 # DRISHYAM
 
 ### Evidence intelligence for criminal investigation
