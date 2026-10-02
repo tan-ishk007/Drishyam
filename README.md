@@ -571,7 +571,7 @@ Interactive documentation is served at `/docs` when the API is running.
 `qwen2.5vl:7b` pulled.
 
 ```bash
-git clone https://github.com/Namkar255/DRISHYAM.git
+git clone https://github.com/tan-ishk007/Drishyam.git
 cd DRISHYAM/backend
 
 cp .env.example .env        # fill in DATABASE_URL, REDIS_URL, SECRET_KEY
